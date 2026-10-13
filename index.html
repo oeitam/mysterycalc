@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mystery Calculator</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fff1c9;--ink:#4a3b6b;--screen:#fff;--sheet:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#2b2346;--ink:#fff;--screen:#3a3060;--sheet:#3a3060}}
+:root[data-theme="dark"]{--bg:#2b2346;--ink:#fff;--screen:#3a3060;--sheet:#3a3060}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*:before,*:after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Trebuchet MS","Comic Sans MS",system-ui,sans-serif;display:flex;flex-direction:column;max-width:440px;margin:0 auto;padding:10px 14px;gap:10px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+.top{display:flex;align-items:center;gap:8px}
+.time{flex:1;font-size:34px;font-weight:900;background:#ffd166;color:#4a3b6b;border-radius:22px;padding:6px 14px;text-align:center}
+.sm{border:0;border-radius:20px;padding:12px 14px;font-family:inherit;font-weight:800;font-size:16px;color:#fff;background:#6c5ce7;box-shadow:0 4px 0 rgba(0,0,0,.2)}
+.sm.hint{background:#ff6b9d}
+.sm:active{transform:translateY(3px);box-shadow:none}
+.screen{background:var(--screen);border-radius:26px;padding:14px 18px;text-align:right;font-size:44px;font-weight:900;min-height:78px;overflow:hidden;white-space:nowrap;box-shadow:inset 0 4px 0 rgba(0,0,0,.08)}
+.tip{font-size:13px;text-align:center;opacity:.8;margin:-2px 0}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;flex:1;align-content:start}
+.k{aspect-ratio:1;border:0;border-radius:28px;font-family:inherit;font-weight:900;font-size:34px;color:#4a3b6b;box-shadow:0 6px 0 rgba(0,0,0,.18);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.k:active{transform:translateY(4px);box-shadow:0 2px 0 rgba(0,0,0,.18)}
+.k.hid{color:#4a3b6b;font-size:54px;font-weight:900;line-height:1;text-shadow:0 3px 0 rgba(255,255,255,.7)}
+.k.pop{animation:pop .4s}
+@keyframes pop{50%{transform:scale(1.18)}}
+.ov{position:fixed;inset:0;background:rgba(40,20,70,.55);display:none;align-items:flex-end;justify-content:center;z-index:5}
+.ov.show{display:flex}
+.sheet{background:var(--sheet);width:100%;max-width:440px;border-radius:32px 32px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));text-align:center}
+.sheet h3{margin:0 0 12px;font-size:20px}
+.opts{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.opts button{border:0;border-radius:18px;padding:12px 0;font-family:inherit;font-weight:900;font-size:26px;background:#7bed9f;color:#2d3436;box-shadow:0 3px 0 rgba(0,0,0,.18)}
+.opts button:disabled{background:#ddd;color:#999;text-decoration:line-through}
+.cancel{display:block;width:100%;margin-top:14px;border:0;border-radius:22px;padding:14px 0;background:#ff6b9d;color:#fff;font-family:inherit;font-weight:900;font-size:20px;box-shadow:0 4px 0 rgba(0,0,0,.2)}.cancel:active{transform:translateY(3px);box-shadow:none}
+.pen{position:fixed;top:30%;left:50%;transform:translateX(-50%);font-size:56px;font-weight:900;color:#ff4757;opacity:0;pointer-events:none;z-index:9;text-shadow:0 3px 0 #fff}
+.pen.go{animation:fly 1s}
+@keyframes fly{0%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-60px)}}
+.win{align-items:center}
+.win .sheet{border-radius:32px;margin:0 20px;padding:28px}
+.win .big{font-size:48px;font-weight:900;margin:8px 0 16px}
+</style></head><body>
+<div class="top"><div class="time" id="time">0.0s</div><button class="sm hint" id="hint">💡 Hint</button><button class="sm" id="restart">↻</button></div>
+<div class="screen" id="screen">0</div>
+<div class="tip">Tap to try a button · Long-press to guess it</div>
+<div class="tip" id="best" style="font-weight:900;font-size:16px"></div>
+<div class="grid" id="grid"></div>
+<div class="ov" id="menu"><div class="sheet"><h3>What does this button do?</h3><div class="opts" id="opts"></div><button class="cancel" id="cancel">Cancel</button></div></div>
+<div class="ov win" id="win"><div class="sheet"><div style="font-size:54px">🎉</div><h3>You cracked them all!</h3><div class="big" id="final"></div><button class="sm" id="again">Play again</button></div></div>
+<div class="pen" id="pen">+5s</div>
+<script>
+const ALL=['0','1','2','3','4','5','6','7','8','9','+','−','×','÷'];
+const COLORS=['#ff8fab','#ffb347','#ffe066','#7bed9f','#70d6ff','#ff9f9f','#5ee6c1'];
+const $=id=>document.getElementById(id);
+let order,rev,t0,pen,tm,done,cur,acc,op,fresh,target,ex,res,ac,best=null;
+
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function init(){
+  clearInterval(tm);tm=null;t0=null;pen=0;done=false;rev=new Set();
+  cur='0';acc=null;op=null;fresh=false;
+  order=shuffle(ALL.concat('C','='));
+  $('win').classList.remove('show');$('menu').classList.remove('show');
+  ex='';res=false;$('screen').textContent='0';$('time').textContent='0.0s';
+  build();
+}
+function build(){
+  const g=$('grid');g.innerHTML='';
+  order.forEach((l,i)=>{
+    const b=document.createElement('button');b.className='k';
+    const shown=l==='C'||l==='='||rev.has(l);
+    b.className='k'+(shown?'':' hid');
+    b.textContent=shown?l:'?';
+    b.style.background=l==='C'?'#fff':l==='='?'#ff7675':'+−×÷'.includes(l)?'#a29bfe':COLORS[i%COLORS.length];
+    let timer=null,long=false;
+    b.addEventListener('pointerdown',e=>{long=false;if(l==='C'||l==='='||rev.has(l)||done)return;timer=setTimeout(()=>{long=true;openMenu(l)},450)});
+    const stop=()=>{clearTimeout(timer)};
+    b.addEventListener('pointerup',()=>{stop();if(!long)press(l,b)});
+    b.addEventListener('pointerleave',stop);b.addEventListener('pointercancel',stop);
+    b.addEventListener('contextmenu',e=>e.preventDefault());
+    g.appendChild(b);
+  });
+}
+function start(){if(t0===null){t0=performance.now();tm=setInterval(upd,100)}}
+function elapsed(){return (t0===null?0:(performance.now()-t0)/1000)+pen}
+function upd(){$('time').textContent=elapsed().toFixed(1)+'s'}
+function fmt(x){if(!isFinite(x))return'Error';let s=String(parseFloat(x.toPrecision(9)));return s.length>11?x.toExponential(3):s}
+function calc(a,o,b){return o==='+'?a+b:o==='−'?a-b:o==='×'?a*b:a/b}
+function press(l,b){
+  if(done)return;start();
+  if(/\d/.test(l)){
+    if(res){ex='';res=false}
+    if(fresh||cur==='0'||cur==='Error')cur=l;else if(cur.length<9)cur+=l;
+    ex+=rev.has(l)?l:'?';
+    fresh=false;
+  }else if(l==='C'){cur='0';acc=null;op=null;fresh=false;ex='';res=false}
+  else if(l==='='){
+    if(op!==null&&acc!==null&&cur!=='Error'){cur=fmt(calc(acc,op,+cur));acc=null;op=null;fresh=true;res=true;ex=''}
+  }else{
+    if(cur==='Error')return;
+    if(res){ex=cur;res=false}
+    ex+=rev.has(l)?l:'#';
+    if(acc!==null&&op&&!fresh){cur=fmt(calc(acc,op,+cur));if(cur==='Error'){acc=null;op=null;fresh=true;res=true;$('screen').textContent=cur;return}}
+    acc=+cur;op=l;fresh=true;
+  }
+  $('screen').textContent=res?cur:(ex.slice(-12)||'0');
+}
+function openMenu(l){
+  start();target=l;const o=$('opts');o.innerHTML='';
+  ALL.filter(x=>!rev.has(x)).forEach(x=>{
+    const b=document.createElement('button');b.textContent=x;
+    b.onclick=()=>guess(x,b);o.appendChild(b);
+  });
+  $('menu').classList.add('show');
+}
+function guess(x,b){
+  if(x===target){pop();reveal(target);$('menu').classList.remove('show')}
+  else{b.disabled=true;pen+=5;upd();const p=$('pen');p.classList.remove('go');void p.offsetWidth;p.classList.add('go')}
+}
+function reveal(l){
+  rev.add(l);build();
+  const i=order.indexOf(l);$('grid').children[i].classList.add('pop');
+  if(rev.size===ALL.length){done=true;clearInterval(tm);upd();const t=elapsed(),isNew=best===null||t<best;if(isNew){best=t;try{localStorage.setItem('mcBest',String(t))}catch(e){}showBest()}$('final').textContent=t.toFixed(1)+'s'+(isNew?' 🏆 New best!':'');$('win').classList.add('show')}
+}
+$('hint').onclick=()=>{
+  if(done)return;start();
+  const left=ALL.filter(x=>!rev.has(x));
+  if(left.length)reveal(left[Math.floor(Math.random()*left.length)]);
+};
+$('cancel').onclick=()=>$('menu').classList.remove('show');
+function showBest(){$('best').textContent=best===null?'🏆 Best: —':'🏆 Best: '+best.toFixed(1)+'s'}
+function pop(){try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;ac=ac||new C();if(ac.state==='suspended')ac.resume();const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(300,t);o.frequency.exponentialRampToValueAtTime(900,t+.08);g.gain.setValueAtTime(.4,t);g.gain.exponentialRampToValueAtTime(.001,t+.15);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.16)}catch(e){}}
+try{const v=localStorage.getItem('mcBest');if(v)best=+v}catch(e){}
+showBest();
+$('restart').onclick=init;$('again').onclick=init;
+init();
+</script></body></html>
